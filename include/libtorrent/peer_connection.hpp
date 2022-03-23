@@ -642,6 +642,10 @@ namespace aux {
 
 		void assign_bandwidth(int channel, int amount) override;
 
+        bool is_bitfield_received() const {
+            return m_bitfield_received;
+        }
+
 #if TORRENT_USE_INVARIANT_CHECKS
 		void check_invariant() const;
 #endif
