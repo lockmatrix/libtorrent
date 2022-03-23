@@ -2272,6 +2272,10 @@ namespace libtorrent {
 		m_num_pieces = num_pieces;
 
 		update_interest();
+
+        if (t->share_mode()) {
+            t->recalc_share_mode();
+        }
 	}
 
 	bool peer_connection::disconnect_if_redundant()

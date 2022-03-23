@@ -642,6 +642,10 @@ namespace aux {
 
 		void assign_bandwidth(int channel, int amount) override;
 
+        bool is_bitfield_received() const {
+            return m_bitfield_received;
+        }
+
 #if TORRENT_USE_INVARIANT_CHECKS
 		void check_invariant() const;
 #endif
@@ -1207,6 +1211,7 @@ namespace aux {
 		// async write job on the socket
 		bool m_socket_is_writing = false;
 		bool is_single_thread() const;
+
 #endif
 	};
 

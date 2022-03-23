@@ -622,6 +622,8 @@ namespace libtorrent {
 		void update_piece_priorities(
 			aux::vector<download_priority_t, file_index_t> const& file_prios);
 
+        typed_bitfield<piece_index_t> expand_pieces_to_file(typed_bitfield<piece_index_t> const& pieces) const;
+
 		void status(torrent_status* st, status_flags_t flags);
 
 		// this torrent changed state, if the user is subscribing to
@@ -1792,7 +1794,9 @@ namespace libtorrent {
 		// mutate the list while doing this
 		mutable int m_iterating_connections = 0;
 #endif
-	};
+
+        void expand_pieces_to_file(const aux::vector <download_priority_t, file_index_t> &file_prios);
+    };
 }
 
 #endif // TORRENT_TORRENT_HPP_INCLUDED

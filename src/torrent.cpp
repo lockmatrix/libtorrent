@@ -3525,6 +3525,11 @@ namespace {
 		do_connect_boost();
 
 		state_updated();
+
+        if(share_mode())
+        {
+            recalc_share_mode();
+        }
 	}
 
 	void torrent::update_auto_sequential()
@@ -5582,7 +5587,52 @@ namespace {
 		if (need_update) prioritize_pieces(pieces);
 	}
 
-	// this is called when piece priorities have been updated
+
+    typed_bitfield<piece_index_t> torrent::expand_pieces_to_file(typed_bitfield<piece_index_t> const& pieces) const
+    {
+        INVARIANT_CHECK;
+
+        if (m_torrent_file->num_pieces() == 0)
+        {
+            debug_log("[Locke] num_pieces = 0, skip");
+            return pieces;
+        }
+
+        typed_bitfield<piece_index_t> result_pieces(pieces.size());
+
+        file_storage const& fs = m_torrent_file->files();
+        for (auto const i : fs.file_range())
+        {
+            std::int64_t const size = m_torrent_file->files().file_size(i);
+            if (size == 0) continue;
+
+            piece_index_t start;
+            piece_index_t end;
+            std::tie(start, end) = file_piece_range_inclusive(fs, i);
+            bool has_this_file = false;
+
+            for(piece_index_t idx = start; idx <= end; idx++)
+            {
+                if(pieces.get_bit(idx))
+                {
+                    has_this_file = true;
+                    break;
+                }
+            }
+
+            if(has_this_file)
+            {
+                for(piece_index_t idx = start; idx <= end; idx++)
+                {
+                    result_pieces.set_bit(idx);
+                }
+            }
+        }
+        return result_pieces;
+    }
+
+
+    // this is called when piece priorities have been updated
 	// updates the interested flag in peers
 	void torrent::update_peer_interest(bool const was_finished)
 	{
@@ -10042,6 +10092,12 @@ namespace {
 
 		if (settings().get_bool(settings_pack::dont_count_slow_torrents))
 			m_ses.trigger_auto_manage();
+
+        if(share_mode())
+        {
+            recalc_share_mode();
+        }
+
 	}
 	catch (...) { handle_exception(); }
 
@@ -10096,14 +10152,32 @@ namespace {
 		int num_seeds = 0;
 		int num_peers = 0;
 		int num_downloaders = 0;
-		int missing_pieces = 0;
 		int num_interested = 0;
+        int num_downloaders_bitfield = 0;
+
+        std::unordered_map<piece_index_t, uint32_t> piece_need_count;
+        std::unordered_map<piece_index_t, uint32_t> piece_seed_count;
+
 		for (auto const p : m_connections)
 		{
 			TORRENT_INCREMENT(m_iterating_connections);
 			if (p->is_connecting()) continue;
 			if (p->is_disconnecting()) continue;
+
 			++num_peers;
+
+            if (p->is_bitfield_received())
+            {
+                const typed_bitfield<piece_index_t>& bitfield = p->get_bitfield();
+                for(piece_index_t idx = 0; idx < bitfield.size(); ++idx)
+                {
+                    if(bitfield.get_bit(idx))
+                    {
+                        piece_seed_count[idx] += 1;
+                    }
+                }
+            }
+
 			if (p->is_seed())
 			{
 				++num_seeds;
@@ -10113,13 +10187,43 @@ namespace {
 			if (p->share_mode()) continue;
 			if (p->upload_only()) continue;
 
-			if (p->is_peer_interested()) ++num_interested;
+            if (p->is_peer_interested()) ++num_interested;
 
 			++num_downloaders;
-			missing_pieces += pieces_in_torrent - p->num_have_pieces();
+
+            if (!p->is_bitfield_received()) continue;
+            ++ num_downloaders_bitfield;
+
+            typed_bitfield<piece_index_t> expanded_bitfield = expand_pieces_to_file(p->get_bitfield());
+            int expand_counter = 0;
+            for(piece_index_t idx = 0; idx < expanded_bitfield.size(); ++idx)
+            {
+                if(!p->get_bitfield().get_bit(idx))
+                {
+                    piece_need_count[idx] += 1;
+                    expand_counter++;
+                }
+            }
+
+            /*
+            auto client_ip = p->peer_info_struct()->ip().address().to_string();
+            debug_log("[Locke] client %s has %d / %d, expand need %d",
+                      client_ip.c_str(),
+                      p->num_have_pieces(), pieces_in_torrent, expand_counter);
+            */
 		}
 
+        if(num_downloaders_bitfield == 0) {
+            // debug_log("[Locke] num_downloaders_bitfield == 0, exit");
+            return;
+        }
+
 		if (num_peers == 0) return;
+
+        if(num_seeds >= 10) {
+            debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
+            return;
+        }
 
 		if (num_seeds * 100 / num_peers > 50
 			&& (num_peers * 100 / m_max_connections > 90
@@ -10139,86 +10243,107 @@ namespace {
 			TORRENT_ASSERT(to_disconnect <= seeds.end_index());
 			for (auto const& p : span<peer_connection*>(seeds).first(to_disconnect))
 				p->disconnect(errors::upload_upload_connection, operation_t::bittorrent);
+            debug_log("[Locke] too many seeds %d.", num_peers);
 		}
 
 		if (num_downloaders == 0) return;
 
-		// assume that the seeds are about as fast as us. During the time
-		// we can download one piece, and upload one piece, each seed
-		// can upload two pieces.
-		missing_pieces -= 2 * num_seeds;
+        uint32_t share_mode_target = settings().get_int(settings_pack::share_mode_target); // buffer
 
-		if (missing_pieces <= 0) return;
+        std::unordered_map<piece_index_t, uint32_t> missing_piece_need_count;
+        for(auto it = piece_need_count.begin(); it != piece_need_count.end(); ++it)
+        {
+            if(m_picker->have_piece(it->first)) continue;
+            if(it->second <= share_mode_target) continue;
+            //if(piece_seed_count.find(it->first) == piece_seed_count.end()) continue;
 
-		// missing_pieces represents our opportunity to download pieces
-		// and share them more than once each
+            missing_piece_need_count.insert(*it);
+        }
 
-		// now, download at least one piece, otherwise download one more
-		// piece if our downloaded (and downloading) pieces is less than 50%
-		// of the uploaded bytes
-		int const num_downloaded_pieces = std::max(m_picker->have().num_pieces
-			, m_picker->want().num_pieces);
+        /*
+        debug_log("[Locke] num_downloaders_bitfield %d, piece_need_count %zu -> %zu",
+                  num_downloaders_bitfield,
+                  piece_need_count.size(),
+                  missing_piece_need_count.size());
+        */
 
-		if (std::int64_t(num_downloaded_pieces) * m_torrent_file->piece_length()
-			* settings().get_int(settings_pack::share_mode_target) > m_total_uploaded
-			&& num_downloaded_pieces > 0)
-			return;
 
-		// don't have more pieces downloading in parallel than 5% of the total
-		// number of pieces we have downloaded
-		if (m_picker->get_download_queue_size() > num_downloaded_pieces / 20)
-			return;
+        int piece_seed_count_min = piece_seed_count.begin()->second;
+        if((int)piece_seed_count.size() < pieces_in_torrent)
+        {
+            piece_seed_count_min = 1;
+        } else
+        {
+            for(auto it = piece_seed_count.begin(); it != piece_seed_count.end(); ++it)
+            {
+                piece_seed_count_min = std::min(piece_seed_count_min, (int)it->second);
+            }
+        }
 
-		// one more important property is that there are enough pieces
-		// that more than one peer wants to download
-		// make sure that there are enough downloaders for the rarest
-		// piece. Go through all pieces, figure out which one is the rarest
-		// and how many peers that has that piece
+        std::unordered_map<piece_index_t, double> piece_score;
+        for(auto it = missing_piece_need_count.begin(); it != missing_piece_need_count.end(); ++it)
+        {
+            double score = 0;
 
-		aux::vector<piece_index_t> rarest_pieces;
+            piece_index_t idx = it->first;
+            score += - idx * 1e-6;
 
-		int const num_pieces = m_torrent_file->num_pieces();
-		int rarest_rarity = INT_MAX;
-		for (piece_index_t i(0); i < piece_index_t(num_pieces); ++i)
-		{
-			piece_picker::piece_stats_t ps = m_picker->piece_stats(i);
-			if (ps.peer_count == 0) continue;
-			if (ps.priority == 0 && (ps.have || ps.downloading))
-			{
-				m_picker->set_piece_priority(i, default_priority);
-				continue;
-			}
-			// don't count pieces we already have or are trying to download
-			if (ps.priority > 0 || ps.have) continue;
-			if (ps.peer_count > rarest_rarity) continue;
-			if (ps.peer_count == rarest_rarity)
-			{
-				rarest_pieces.push_back(i);
-				continue;
-			}
+            int demand_count = it->second;
+            score += demand_count * 1;
+            int seed_count = std::max(1, (int)piece_seed_count[idx]);
+            score -= seed_count * 10;
+            //if(m_picker->is_piece_finished(idx)) score += 10;
 
-			rarest_pieces.clear();
-			rarest_rarity = ps.peer_count;
-			rarest_pieces.push_back(i);
-		}
+            if(m_picker->piece_priority(idx) > dont_download)
+            {
+                score += 1;
+            }
+            
+            if(demand_count - seed_count * 3 >= 0 && seed_count <= piece_seed_count_min)
+            {
+                piece_score[idx] = score;
+            }
+        }
 
-		update_gauge();
-		update_want_peers();
+        std::vector<std::pair<piece_index_t, double>> top_pieces(piece_score.size());
+        std::partial_sort_copy(piece_score.begin(),
+                               piece_score.end(),
+                               top_pieces.begin(),
+                               top_pieces.end(),
+                               [](std::pair<piece_index_t, double> const& l,
+                                  std::pair<piece_index_t, double> const& r)
+                               {
+                                   return l.second > r.second;
+                               });
 
-		// now, rarest_pieces is a list of all pieces that are the rarest ones.
-		// and rarest_rarity is the number of peers that have the rarest pieces
+        std::unordered_map<piece_index_t, double> top_piece_set(top_pieces.begin(), top_pieces.end());
 
-		// if there's only a single peer that doesn't have the rarest piece
-		// it's impossible for us to download one piece and upload it
-		// twice. i.e. we cannot get a positive share ratio
-		if (num_peers - rarest_rarity
-			< settings().get_int(settings_pack::share_mode_target))
-			return;
+        int pick_inc_counter = 0;
+        int pick_dec_counter = 0;
+        for(piece_index_t idx = 0; idx < pieces_in_torrent; idx++)
+        {
+            int old_pri = m_picker->piece_priority(idx);
+            auto top_pieces_it = top_piece_set.find(idx);
+            if(old_pri > dont_download) {
+                if(top_pieces_it == top_piece_set.end() && !m_picker->is_piece_finished(idx)) {
+                    m_picker->set_piece_priority(idx, dont_download);
+                    pick_dec_counter ++;
+                }
+            } else if(top_pieces_it != top_piece_set.end()) {
+                m_picker->set_piece_priority(idx, default_priority);
+                pick_inc_counter ++;
+            }
+        }
 
-		// now, pick one of the rarest pieces to download
-		int const pick = int(random(aux::numeric_cast<std::uint32_t>(rarest_pieces.end_index() - 1)));
-		bool const was_finished = is_finished();
-		m_picker->set_piece_priority(rarest_pieces[pick], default_priority);
+        if(pick_inc_counter + pick_dec_counter > 0){
+            debug_log("[Locke] downloaded %d, wanted %d, num_bitfield %d, target_piece %zu, inc %d, dec %d ...",
+                    m_picker->have().num_pieces, m_picker->want().num_pieces, num_downloaders_bitfield,
+                      piece_score.size(), pick_inc_counter, pick_dec_counter);
+        } else {
+            return;
+        }
+
+        bool const was_finished = is_finished();
 		update_gauge();
 		update_peer_interest(was_finished);
 		update_want_peers();
@@ -11990,6 +12115,7 @@ namespace {
 		va_end(v);
 	}
 	catch (std::exception const&) {}
+
 #endif
 
 }
