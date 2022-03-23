@@ -419,6 +419,8 @@ namespace libtorrent {
 		void send_share_mode();
 		void set_share_mode(bool s);
 		bool share_mode() const { return m_share_mode; }
+
+        time_point m_last_share_mode_calc;
 #endif
 
 		// TODO: make graceful pause also finish all sending blocks
@@ -594,6 +596,8 @@ namespace libtorrent {
 
 		void update_piece_priorities(
 			aux::vector<download_priority_t, file_index_t> const& file_prios);
+
+        typed_bitfield<piece_index_t> expand_pieces_to_file(typed_bitfield<piece_index_t> const& pieces) const;
 
 		void status(torrent_status* st, status_flags_t flags);
 
