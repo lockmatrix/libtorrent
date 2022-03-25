@@ -10157,7 +10157,8 @@ namespace {
         int num_downloaders_bitfield = 0;
 
         std::unordered_map<piece_index_t, uint32_t> piece_need_count;
-        std::unordered_map<piece_index_t, uint32_t> piece_seed_count;
+        std::vector<uint32_t> piece_seed_count(pieces_in_torrent);
+
 
         int seed_bitfield = 0;
 		for (auto const p : m_connections)
@@ -10176,7 +10177,7 @@ namespace {
                 {
                     if(bitfield.get_bit((piece_index_t)idx))
                     {
-                        piece_seed_count[(piece_index_t)idx] += 1;
+                        piece_seed_count[idx] += 1;
                         counter++;
                     }
                 }
@@ -10258,42 +10259,29 @@ namespace {
 
         uint32_t share_mode_target = settings().get_int(settings_pack::share_mode_target); // buffer
 
-        std::unordered_map<piece_index_t, uint32_t> missing_piece_need_count;
+        if(seed_bitfield == 0)
+        {
+            for(int idx = 0; idx < pieces_in_torrent; idx++)
+            {
+                piece_seed_count[idx]++;
+            }
+            seed_bitfield++;
+        }
+
+        int piece_seed_count_min = seed_bitfield;
+        for(int idx = 0; idx < piece_seed_count.size(); ++idx)
+        {
+            piece_seed_count_min = std::min(piece_seed_count_min, (int)piece_seed_count[idx]);
+        }
+
+
+        std::unordered_map<piece_index_t, double> piece_score;
         for(auto it = piece_need_count.begin(); it != piece_need_count.end(); ++it)
         {
             if(m_picker->have_piece(it->first)) continue;
             if(it->second <= share_mode_target) continue;
             //if(piece_seed_count.find(it->first) == piece_seed_count.end()) continue;
 
-            missing_piece_need_count.insert(*it);
-        }
-
-        /*
-        debug_log("[Locke] num_downloaders_bitfield %d, piece_need_count %zu -> %zu",
-                  num_downloaders_bitfield,
-                  piece_need_count.size(),
-                  missing_piece_need_count.size());
-        */
-
-        if(seed_bitfield == 0)
-        {
-            for(int idx = 0; idx < pieces_in_torrent; idx++)
-            {
-                piece_seed_count[(piece_index_t)idx]++;
-            }
-            seed_bitfield++;
-        }
-
-        int piece_seed_count_min = seed_bitfield;
-        for(auto it = piece_seed_count.begin(); it != piece_seed_count.end(); ++it)
-        {
-            piece_seed_count_min = std::min(piece_seed_count_min, (int)it->second);
-        }
-
-
-        std::unordered_map<piece_index_t, double> piece_score;
-        for(auto it = missing_piece_need_count.begin(); it != missing_piece_need_count.end(); ++it)
-        {
             double score = 0;
 
             piece_index_t idx = it->first;
@@ -10301,7 +10289,7 @@ namespace {
 
             int demand_count = it->second;
             score += demand_count * 1;
-            int seed_count = piece_seed_count[idx];
+            int seed_count = piece_seed_count[(int)idx];
             score -= seed_count * 10;
             //if(m_picker->is_piece_finished(idx)) score += 10;
 
@@ -10316,32 +10304,19 @@ namespace {
             }
         }
 
-        std::vector<std::pair<piece_index_t, double>> top_pieces(piece_score.size());
-        std::partial_sort_copy(piece_score.begin(),
-                               piece_score.end(),
-                               top_pieces.begin(),
-                               top_pieces.end(),
-                               [](std::pair<piece_index_t, double> const& l,
-                                  std::pair<piece_index_t, double> const& r)
-                               {
-                                   return l.second > r.second;
-                               });
-
-        std::unordered_map<piece_index_t, double> top_piece_set(top_pieces.begin(), top_pieces.end());
-
         int pick_inc_counter = 0;
         int pick_dec_counter = 0;
         for(int idx = 0; idx < pieces_in_torrent; idx++)
         {
             piece_index_t index = (piece_index_t)idx;
             download_priority_t old_pri = m_picker->piece_priority(index);
-            auto top_pieces_it = top_piece_set.find(index);
+            auto pieces_it = piece_score.find(index);
             if(old_pri > dont_download) {
-                if(top_pieces_it == top_piece_set.end() && !m_picker->is_piece_finished(index)) {
+                if(pieces_it == piece_score.end() && !m_picker->is_piece_finished(index)) {
                     m_picker->set_piece_priority(index, dont_download);
                     pick_dec_counter ++;
                 }
-            } else if(top_pieces_it != top_piece_set.end()) {
+            } else if(pieces_it != piece_score.end()) {
                 m_picker->set_piece_priority(index, default_priority);
                 pick_inc_counter ++;
             }
