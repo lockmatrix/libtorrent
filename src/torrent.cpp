@@ -7459,11 +7459,6 @@ namespace {
 			return false;
 		}
 
-#ifndef TORRENT_DISABLE_SHARE_MODE
-		if (m_share_mode)
-			recalc_share_mode();
-#endif
-
 		return peerinfo->connection != nullptr;
 	}
 
@@ -7862,11 +7857,6 @@ namespace {
 
 #if TORRENT_USE_INVARIANT_CHECKS
 		if (m_peer_list) m_peer_list->check_invariant();
-#endif
-
-#ifndef TORRENT_DISABLE_SHARE_MODE
-		if (m_share_mode)
-			recalc_share_mode();
 #endif
 
 		// once we add the peer to our m_connections list, we can't throw an
