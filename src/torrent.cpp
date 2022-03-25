@@ -10146,7 +10146,8 @@ namespace {
 	void torrent::recalc_share_mode()
 	{
 		TORRENT_ASSERT(share_mode());
-		if (is_seed()) return;
+
+        //if (is_seed()) return;
 
 		int const pieces_in_torrent = m_torrent_file->num_pieces();
 		int num_seeds = 0;
