@@ -10268,6 +10268,7 @@ namespace {
 
         int pick_inc_counter = 0;
         int pick_dec_counter = 0;
+        int pick_dec_but_almost_done_counter = 0;
         for(int idx = 0; idx < pieces_in_torrent; idx++)
         {
             piece_index_t index = (piece_index_t)idx;
@@ -10276,9 +10277,15 @@ namespace {
             download_priority_t old_pri = m_picker->piece_priority(index);
             auto pieces_it = piece_score.find(index);
             if(old_pri > dont_download) {
-                if(pieces_it == piece_score.end() && !m_picker->is_piece_finished(index)) {
-                    m_picker->set_piece_priority(index, dont_download);
-                    pick_dec_counter ++;
+                if(pieces_it == piece_score.end()) {
+                    piece_picker::downloading_piece piece_info;
+                    m_picker->piece_info(index, piece_info);
+                    if(piece_info.finished >= std::max(1, m_picker->blocks_in_piece(index) * 3 / 4)) {
+                        pick_dec_but_almost_done_counter ++;
+                    } else {
+                        m_picker->set_piece_priority(index, dont_download);
+                        pick_dec_counter ++;
+                    }
                 }
             } else if(pieces_it != piece_score.end()) {
                 if(pieces_it->second >= 0)
@@ -10292,10 +10299,10 @@ namespace {
             }
         }
 
-        if(pick_inc_counter + pick_dec_counter > 0){
-            debug_log("[Locke] downloaded %d, wanted %d, num_bitfield %d, target_piece %zu, inc %d, dec %d ...",
+        if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter > 0){
+            debug_log("[Locke] downloaded %d, wanted %d, num_bitfield %d, target %zu, inc %d, dec %d, dec_almost %d",
                     m_picker->have().num_pieces, m_picker->want().num_pieces, num_downloaders_bitfield,
-                      piece_score.size(), pick_inc_counter, pick_dec_counter);
+                      piece_score.size(), pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter);
         } else {
             return;
         }
