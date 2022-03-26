@@ -10137,27 +10137,50 @@ namespace {
 		int const pieces_in_torrent = m_torrent_file->num_pieces();
 		int num_seeds = 0;
 		int num_peers = 0;
-		int num_downloaders = 0;
-		int num_interested = 0;
+        std::vector<peer_connection*> filtered_connections;
+
+        for (auto const p : m_connections)
+        {
+            TORRENT_INCREMENT(m_iterating_connections);
+            if (p->is_connecting()) continue;
+            if (p->is_disconnecting()) continue;
+
+            ++num_peers;
+
+            if (p->is_seed())
+            {
+                ++num_seeds;
+                continue;
+            }
+
+            filtered_connections.push_back(p);
+        }
+
+        if(num_seeds >= 10) {
+            debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
+            if(m_picker->want().num_pieces > 0)
+            {
+                debug_log("[Locke] cancel all downloading.");
+                for(int idx = 0; idx < pieces_in_torrent; idx++)
+                {
+                    piece_index_t index = (piece_index_t)idx;
+                    if(m_picker->have_piece(index)) continue;
+                    m_picker->set_piece_priority(index, dont_download);
+                }
+            }
+            return;
+        }
+
+
+        int num_downloaders = 0;
+        int num_interested = 0;
         int num_downloaders_bitfield = 0;
 
         std::unordered_map<piece_index_t, uint32_t> piece_need_count;
         std::vector<uint32_t> piece_non_seed_upload_count(pieces_in_torrent);
 
-		for (auto const p : m_connections)
+		for (auto const p : filtered_connections)
 		{
-			TORRENT_INCREMENT(m_iterating_connections);
-			if (p->is_connecting()) continue;
-			if (p->is_disconnecting()) continue;
-
-			++num_peers;
-
-			if (p->is_seed())
-			{
-				++num_seeds;
-				continue;
-			}
-
             if (p->is_bitfield_received())
             {
                 const typed_bitfield<piece_index_t>& bitfield = p->get_bitfield();
@@ -10190,13 +10213,6 @@ namespace {
                     expand_counter++;
                 }
             }
-
-            /*
-            auto client_ip = p->peer_info_struct()->ip().address().to_string();
-            debug_log("[Locke] client %s has %d / %d, expand need %d",
-                      client_ip.c_str(),
-                      p->num_have_pieces(), pieces_in_torrent, expand_counter);
-            */
 		}
 
         if(num_downloaders_bitfield == 0) {
@@ -10205,11 +10221,6 @@ namespace {
         }
 
 		if (num_peers == 0) return;
-
-        if(num_seeds >= 10) {
-            debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
-            return;
-        }
 
 		if (num_seeds * 100 / num_peers > 50
 			&& (num_peers * 100 / m_max_connections > 90
