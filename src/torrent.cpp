@@ -10142,10 +10142,8 @@ namespace {
         int num_downloaders_bitfield = 0;
 
         std::unordered_map<piece_index_t, uint32_t> piece_need_count;
-        std::vector<uint32_t> piece_seed_count(pieces_in_torrent);
+        std::vector<uint32_t> piece_non_seed_upload_count(pieces_in_torrent);
 
-
-        int seed_bitfield = 0;
 		for (auto const p : m_connections)
 		{
 			TORRENT_INCREMENT(m_iterating_connections);
@@ -10154,29 +10152,23 @@ namespace {
 
 			++num_peers;
 
-            if (p->is_bitfield_received())
-            {
-                const typed_bitfield<piece_index_t>& bitfield = p->get_bitfield();
-                int counter = 0;
-                for(int idx = 0; idx < bitfield.size(); ++idx)
-                {
-                    if(bitfield.get_bit((piece_index_t)idx))
-                    {
-                        piece_seed_count[idx] += 1;
-                        counter++;
-                    }
-                }
-                if(counter == bitfield.size())
-                {
-                    seed_bitfield++;
-                }
-            }
-
 			if (p->is_seed())
 			{
 				++num_seeds;
 				continue;
 			}
+
+            if (p->is_bitfield_received())
+            {
+                const typed_bitfield<piece_index_t>& bitfield = p->get_bitfield();
+                for(int idx = 0; idx < bitfield.size(); ++idx)
+                {
+                    if(bitfield.get_bit((piece_index_t)idx))
+                    {
+                        piece_non_seed_upload_count[idx] += 1;
+                    }
+                }
+            }
 
 			if (p->share_mode()) continue;
 			if (p->upload_only()) continue;
@@ -10237,56 +10229,30 @@ namespace {
 			TORRENT_ASSERT(to_disconnect <= seeds.end_index());
 			for (auto const& p : span<peer_connection*>(seeds).first(to_disconnect))
 				p->disconnect(errors::upload_upload_connection, operation_t::bittorrent);
-            debug_log("[Locke] too many seeds %d.", num_peers);
 		}
 
 		if (num_downloaders == 0) return;
 
-        uint32_t share_mode_target = settings().get_int(settings_pack::share_mode_target); // buffer
-
-        if(seed_bitfield == 0)
-        {
-            for(int idx = 0; idx < pieces_in_torrent; idx++)
-            {
-                piece_seed_count[idx]++;
-            }
-            seed_bitfield++;
-        }
-
-        int piece_seed_count_min = seed_bitfield;
-        for(int idx = 0; idx < piece_seed_count.size(); ++idx)
-        {
-            piece_seed_count_min = std::min(piece_seed_count_min, (int)piece_seed_count[idx]);
-        }
-
+        uint32_t share_mode_target = settings().get_int(settings_pack::share_mode_target);
 
         std::unordered_map<piece_index_t, double> piece_score;
         for(auto it = piece_need_count.begin(); it != piece_need_count.end(); ++it)
         {
-            if(m_picker->have_piece(it->first)) continue;
-            if(it->second <= share_mode_target) continue;
-            //if(piece_seed_count.find(it->first) == piece_seed_count.end()) continue;
+            piece_index_t idx = it->first;
+            int demand_count = it->second;
+            int non_seed_upload_count = (int)piece_non_seed_upload_count[(int)idx];
+
+            if(m_picker->have_piece(idx)) continue;
+
+            if(demand_count <= (int)share_mode_target) continue;
+            if(demand_count < (std::max(1, num_seeds) + non_seed_upload_count * 3) * 3) continue;
 
             double score = 0;
-
-            piece_index_t idx = it->first;
-            score += - (int)idx * 1e-6;
-
-            int demand_count = it->second;
             score += demand_count * 1;
-            int seed_count = piece_seed_count[(int)idx];
-            score -= seed_count * 10;
-            //if(m_picker->is_piece_finished(idx)) score += 10;
+            score -= num_seeds * 10;
+            score -= non_seed_upload_count * 30;
 
-            if(m_picker->piece_priority(idx) > dont_download)
-            {
-                score += 1;
-            }
-            
-            if(demand_count - std::max(1, seed_count) * 3 >= 0 && seed_count <= piece_seed_count_min)
-            {
-                piece_score[idx] = score;
-            }
+            piece_score[idx] = score;
         }
 
         int pick_inc_counter = 0;
@@ -10294,6 +10260,8 @@ namespace {
         for(int idx = 0; idx < pieces_in_torrent; idx++)
         {
             piece_index_t index = (piece_index_t)idx;
+            if(m_picker->have_piece(index)) continue;
+
             download_priority_t old_pri = m_picker->piece_priority(index);
             auto pieces_it = piece_score.find(index);
             if(old_pri > dont_download) {
@@ -10302,7 +10270,13 @@ namespace {
                     pick_dec_counter ++;
                 }
             } else if(pieces_it != piece_score.end()) {
-                m_picker->set_piece_priority(index, default_priority);
+                if(pieces_it->second >= 0)
+                {
+                    m_picker->set_piece_priority(index, default_priority);
+                } else
+                {
+                    m_picker->set_piece_priority(index, low_priority);
+                }
                 pick_inc_counter ++;
             }
         }
