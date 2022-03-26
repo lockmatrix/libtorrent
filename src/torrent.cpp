@@ -10158,7 +10158,7 @@ namespace {
 
         if(num_seeds >= 10) {
             debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
-            if(m_picker->want().num_pieces > 0)
+            if(m_picker->want().num_pieces - m_picker->have_want().num_pieces > 0)
             {
                 debug_log("[Locke] cancel all downloading.");
                 for(int idx = 0; idx < pieces_in_torrent; idx++)
@@ -10300,9 +10300,10 @@ namespace {
         }
 
         if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter > 0){
-            debug_log("[Locke] downloaded %d, wanted %d, num_bitfield %d, target %zu, inc %d, dec %d, dec_almost %d",
-                    m_picker->have().num_pieces, m_picker->want().num_pieces, num_downloaders_bitfield,
-                      piece_score.size(), pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter);
+            debug_log("[Locke] done %d, doing %d, num_bitfield %d, target %zu, inc %d, dec %d, dec_almost %d",
+                    m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
+                    num_downloaders_bitfield, piece_score.size(),
+                    pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter);
         } else {
             return;
         }
