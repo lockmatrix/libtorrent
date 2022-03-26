@@ -3525,11 +3525,6 @@ namespace {
 		do_connect_boost();
 
 		state_updated();
-
-        if(share_mode())
-        {
-            recalc_share_mode();
-        }
 	}
 
 	void torrent::update_auto_sequential()
@@ -4129,10 +4124,6 @@ namespace {
 
 			m_last_download = aux::time_now32();
 
-#ifndef TORRENT_DISABLE_SHARE_MODE
-			if (m_share_mode)
-				recalc_share_mode();
-#endif
 		}
 		update_want_tick();
 	}
@@ -10020,6 +10011,16 @@ namespace {
 		m_total_downloaded += m_stat.last_payload_downloaded();
 		m_stat.second_tick(tick_interval_ms);
 
+#ifndef TORRENT_DISABLE_SHARE_MODE
+        if (share_mode()) {
+            //avg call recalc_share_mode per 2s
+            if((int)random(2000) < tick_interval_ms) {
+                recalc_share_mode();
+            }
+        }
+#endif
+
+
 		// these counters are saved in the resume data, since they updated
 		// we need to save the resume data too
 		m_need_save_resume_data = true;
@@ -10082,12 +10083,6 @@ namespace {
 
 		if (settings().get_bool(settings_pack::dont_count_slow_torrents))
 			m_ses.trigger_auto_manage();
-
-        if(share_mode())
-        {
-            recalc_share_mode();
-        }
-
 	}
 	catch (...) { handle_exception(); }
 

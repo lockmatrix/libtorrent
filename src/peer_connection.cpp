@@ -5339,11 +5339,6 @@ namespace libtorrent {
 			--i;
 		}
 		m_ses.deferred_submit_jobs();
-
-#ifndef TORRENT_DISABLE_SHARE_MODE
-		if (t->share_mode() && sent_a_piece)
-			t->recalc_share_mode();
-#endif
 	}
 
 	// this is called when a previously unchecked piece has been
