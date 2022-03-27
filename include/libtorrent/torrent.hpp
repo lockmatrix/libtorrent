@@ -446,6 +446,8 @@ namespace libtorrent {
 		void send_share_mode();
 		void set_share_mode(bool s);
 		bool share_mode() const { return m_share_mode; }
+
+        time_point m_last_share_mode_calc;
 #endif
 
 		// TODO: make graceful pause also finish all sending blocks

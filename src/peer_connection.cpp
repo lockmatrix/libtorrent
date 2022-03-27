@@ -2069,6 +2069,11 @@ namespace libtorrent {
 				p->superseed_piece(index, t->get_piece_to_super_seed(p->get_bitfield()));
 			}
 		}
+
+        if (t->share_mode()) {
+            t->recalc_share_mode();
+        }
+
 #endif // TORRENT_ABI_VERSION
 #endif // TORRENT_DISABLE_SUPERSEEDING
 	}

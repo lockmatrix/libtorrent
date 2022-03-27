@@ -10011,16 +10011,6 @@ namespace {
 		m_total_downloaded += m_stat.last_payload_downloaded();
 		m_stat.second_tick(tick_interval_ms);
 
-#ifndef TORRENT_DISABLE_SHARE_MODE
-        if (share_mode()) {
-            //avg call recalc_share_mode per 2s
-            if((int)random(2000) < tick_interval_ms) {
-                recalc_share_mode();
-            }
-        }
-#endif
-
-
 		// these counters are saved in the resume data, since they updated
 		// we need to save the resume data too
 		m_need_save_resume_data = true;
@@ -10131,6 +10121,15 @@ namespace {
 	void torrent::recalc_share_mode()
 	{
 		TORRENT_ASSERT(share_mode());
+
+        time_point const now = aux::time_now();
+
+        if(m_last_share_mode_calc != time_point()) {
+            int const tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc));
+            if(tick_interval_ms < 1000) return;
+        }
+
+        m_last_share_mode_calc = now;
 
         //if (is_seed()) return;
 
