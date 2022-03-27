@@ -10319,16 +10319,11 @@ namespace {
             }
         }
 
-        if(have_filtered_counter > 0)
-        {
-            debug_log("[Locke] enable have_filtered %d.", have_filtered_counter);
-        }
-
-        if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter > 0){
-            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d",
+        if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter + have_filtered_counter > 0){
+            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d, have_filtered %d.",
                     m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
                     num_downloaders_bitfield,
-                    pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter);
+                    pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter, have_filtered_counter);
         } else {
             return;
         }
