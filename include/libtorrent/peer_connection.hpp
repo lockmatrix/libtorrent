@@ -1211,7 +1211,6 @@ namespace aux {
 		// async write job on the socket
 		bool m_socket_is_writing = false;
 		bool is_single_thread() const;
-
 #endif
 	};
 

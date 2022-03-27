@@ -1796,9 +1796,7 @@ namespace libtorrent {
 		// mutate the list while doing this
 		mutable int m_iterating_connections = 0;
 #endif
-
-        void expand_pieces_to_file(const aux::vector <download_priority_t, file_index_t> &file_prios);
-    };
+	};
 }
 
 #endif // TORRENT_TORRENT_HPP_INCLUDED
