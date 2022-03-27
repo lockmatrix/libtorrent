@@ -10015,6 +10015,13 @@ namespace {
 		m_total_downloaded += m_stat.last_payload_downloaded();
 		m_stat.second_tick(tick_interval_ms);
 
+#ifndef TORRENT_DISABLE_SHARE_MODE
+        if (share_mode()) {
+            recalc_share_mode();
+        }
+#endif
+
+
 		// these counters are saved in the resume data, since they updated
 		// we need to save the resume data too
 		m_need_save_resume_data = true;
