@@ -353,6 +353,10 @@ bool is_downloading_state(int const st)
 				&& std::find(p.piece_priorities.begin(), p.piece_priorities.end(), dont_download) == p.piece_priorities.end()
 				&& std::find(p.have_pieces.begin(), p.have_pieces.end(), false) == p.have_pieces.end();
 
+            if(m_share_mode) {
+                m_seed_mode = false;
+            }
+
 			m_connections_initialized = true;
 		}
 		else
