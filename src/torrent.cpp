@@ -10269,12 +10269,20 @@ namespace {
         int pick_inc_counter = 0;
         int pick_dec_counter = 0;
         int pick_dec_but_almost_done_counter = 0;
+        int have_filtered_counter = 0;
         for(int idx = 0; idx < pieces_in_torrent; idx++)
         {
             piece_index_t index = (piece_index_t)idx;
-            if(m_picker->have_piece(index)) continue;
 
             download_priority_t old_pri = m_picker->piece_priority(index);
+            if(m_picker->have_piece(index)) {
+                if (old_pri == dont_download)
+                {
+                    m_picker->set_piece_priority(index, default_priority);
+                    have_filtered_counter++;
+                }
+                continue;
+            }
             auto pieces_it = piece_score.find(index);
             if(old_pri > dont_download) {
                 if(pieces_it == piece_score.end()) {
@@ -10299,10 +10307,15 @@ namespace {
             }
         }
 
+        if(have_filtered_counter > 0)
+        {
+            debug_log("[Locke] enable have_filtered %d.", have_filtered_counter);
+        }
+
         if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter > 0){
-            debug_log("[Locke] done %d, doing %d, num_bitfield %d, target %zu, inc %d, dec %d, dec_almost %d",
+            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d",
                     m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
-                    num_downloaders_bitfield, piece_score.size(),
+                    num_downloaders_bitfield,
                     pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter);
         } else {
             return;
