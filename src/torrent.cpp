@@ -10122,6 +10122,8 @@ namespace {
 	{
 		TORRENT_ASSERT(share_mode());
 
+        if(!(valid_metadata() && has_picker())) return;
+
         time_point const now = aux::time_now();
 
         if(m_last_share_mode_calc != time_point()) {
