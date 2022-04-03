@@ -2080,6 +2080,7 @@ namespace libtorrent {
 		}
 
         if (t->share_mode()) {
+            t->share_mode_client_bitfield_updated = true;
             t->recalc_share_mode();
         }
 
@@ -2288,6 +2289,7 @@ namespace libtorrent {
 		update_interest();
 
         if (t->share_mode()) {
+            t->share_mode_client_bitfield_updated = true;
             t->recalc_share_mode();
         }
 	}
