@@ -421,6 +421,7 @@ namespace libtorrent {
 		bool share_mode() const { return m_share_mode; }
 
         time_point m_last_share_mode_calc;
+        bool share_mode_client_bitfield_updated;
 #endif
 
 		// TODO: make graceful pause also finish all sending blocks
