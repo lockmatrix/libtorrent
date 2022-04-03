@@ -10138,11 +10138,17 @@ namespace {
         time_point const now = aux::time_now();
 
         if(m_last_share_mode_calc != time_point()) {
+            int timeout_ms = 1000;
+            if(!share_mode_client_bitfield_updated) {
+                timeout_ms = 60 * 1000;
+            }
+
             int const tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc));
-            if(tick_interval_ms < 1000) return;
+            if(tick_interval_ms < timeout_ms) return;
         }
 
         m_last_share_mode_calc = now;
+        share_mode_client_bitfield_updated = false;
 
         //if (is_seed()) return;
 
