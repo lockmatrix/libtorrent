@@ -9762,8 +9762,7 @@ bool is_downloading_state(int const st)
 
             lead_conn_counter += group_size;
 
-            double progress = bitfield.count() * 1.0 / bitfield.size();
-            debug_log("[Locke] lead group size %d, progress %.4f .", group_size, progress);
+            //debug_log("[Locke] lead group size %d, progress %.4f .", group_size, bitfield.count() * 1.0 / bitfield.size());
         }
 
 		for (auto const p : other_conns)
@@ -9829,6 +9828,8 @@ bool is_downloading_state(int const st)
 
             if(demand_count <= (int)share_mode_target) continue;
             if(demand_count < (std::max(1, num_seeds) + non_seed_upload_count * 3) * 3) continue;
+
+            if(num_seeds + non_seed_upload_count >= 10) continue;
 
             double score = 0;
             score += demand_count * 1;
