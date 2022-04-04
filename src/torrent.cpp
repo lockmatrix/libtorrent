@@ -10367,13 +10367,21 @@ namespace {
                     }
                 }
             } else if(pieces_it != piece_score.end()) {
-                if(pieces_it->second >= 0)
+                download_priority_t new_pri = default_priority;
+
+                int non_seed_upload_count = (int)piece_non_seed_upload_count[(int)idx];
+                if(non_seed_upload_count == 0 && num_seeds == 1)
                 {
-                    m_picker->set_piece_priority(index, default_priority);
+                    new_pri = top_priority;
+                }
+                else if(pieces_it->second >= 0)
+                {
+                    new_pri = default_priority;
                 } else
                 {
-                    m_picker->set_piece_priority(index, low_priority);
+                    new_pri = low_priority;
                 }
+                m_picker->set_piece_priority(index, new_pri);
                 pick_inc_counter ++;
             }
         }
