@@ -10224,7 +10224,12 @@ namespace {
                 continue;
             }
 
-            filtered_connections.push_back(p);
+            if (p->share_mode()) continue;
+            if (p->upload_only()) continue;
+
+            if (p->is_bitfield_received()) {
+                filtered_connections.push_back(p);
+            }
         }
 
         if(num_seeds >= 10) {
@@ -10241,47 +10246,119 @@ namespace {
             }
             return;
         }
+        
+        if(filtered_connections.empty()) return;
 
+        std::sort(filtered_connections.begin(), filtered_connections.end(),
+                  [](peer_connection* c1, peer_connection* c2)
+                  {
+                        return c1->num_have_pieces() > c2->num_have_pieces();
+                    });
+        
+        std::vector<std::set<peer_connection*>> lead_groups;
+        std::vector<peer_connection*> other_conns;
 
-        int num_downloaders = 0;
-        int num_interested = 0;
+        // gen lead groups;
+        int lead_conn_counter = 0;
+        {
+            int blocks_in_piece = m_picker->blocks_in_piece(piece_index_t(0));
+            int gap_block_threshold = 3 * 1024 * (1024 * 1024 / default_block_size); // 3GiB
+            int lead_conn_num_threshold = 10;
+            
+            int head = 0;
+            while(head < (int)filtered_connections.size() && lead_conn_counter < lead_conn_num_threshold) {
+                peer_connection* head_conn = filtered_connections[head];
+                std::set<peer_connection*> group;
+                group.insert(head_conn);
+                lead_conn_counter++;
+                int iter = head + 1;
+                for(; iter < (int)filtered_connections.size(); ++iter) {
+                    peer_connection* conn = filtered_connections[iter];
+                    
+                    int gap_pieces = std::abs(head_conn->num_have_pieces() - conn->num_have_pieces());
+                    if(gap_pieces * blocks_in_piece > gap_block_threshold) break;
+                    
+                    int diff_pieces = head_conn->get_bitfield().count() - head_conn->get_bitfield().and_all(conn->get_bitfield()).count();
+                    if(diff_pieces * blocks_in_piece > gap_block_threshold) break;
+                    
+                    group.insert(conn);
+                    lead_conn_counter++;
+                }
+                head = iter;
+                lead_groups.push_back(std::move(group));
+            }
+
+            for(int idx = (int)lead_groups.size()-1; idx >= 0; idx--) {
+                if(lead_groups[idx].size() == 1) {
+                    other_conns.push_back(*lead_groups[idx].begin());
+                    lead_groups.resize(idx);
+                } else {
+                    break;
+                }
+            }
+            
+            for(; head < (int)filtered_connections.size(); ++head) {
+                other_conns.push_back(filtered_connections[head]);
+            }
+        }
+
         int num_downloaders_bitfield = 0;
 
         std::unordered_map<piece_index_t, uint32_t> piece_need_count;
         std::vector<uint32_t> piece_non_seed_upload_count(pieces_in_torrent);
 
-		for (auto const p : filtered_connections)
-		{
-            if (p->is_bitfield_received())
+        lead_conn_counter = 0;
+        for (auto & group : lead_groups) {
+            typed_bitfield<piece_index_t> bitfield((*group.begin())->get_bitfield().size());
+            for (auto const p : group) {
+                bitfield = bitfield.or_all(p->get_bitfield());
+            }
+
+            int group_size = group.size();
+            for(int idx = 0; idx < bitfield.size(); ++idx)
             {
-                const typed_bitfield<piece_index_t>& bitfield = p->get_bitfield();
-                for(int idx = 0; idx < bitfield.size(); ++idx)
+                if(bitfield.get_bit((piece_index_t)idx))
                 {
-                    if(bitfield.get_bit((piece_index_t)idx))
-                    {
-                        piece_non_seed_upload_count[idx] += 1;
-                    }
+                    piece_non_seed_upload_count[idx] += group_size;
                 }
             }
 
-			if (p->share_mode()) continue;
-			if (p->upload_only()) continue;
+            num_downloaders_bitfield += group_size;
 
-            if (p->is_peer_interested()) ++num_interested;
+            typed_bitfield<piece_index_t> expanded_bitfield = expand_pieces_to_file(bitfield);
+            for(int idx = 0; idx < expanded_bitfield.size(); ++idx)
+            {
+                if(!bitfield.get_bit((piece_index_t)idx))
+                {
+                    piece_need_count[(piece_index_t)idx] += group_size;
+                }
+            }
 
-			++num_downloaders;
+            lead_conn_counter += group_size;
 
-            if (!p->is_bitfield_received()) continue;
+            double progress = bitfield.count() * 1.0 / bitfield.size();
+            debug_log("[Locke] lead group size %d, progress %.4f .", group_size, progress);
+        }
+
+		for (auto const p : other_conns)
+		{
+            const typed_bitfield<piece_index_t>& bitfield = p->get_bitfield();
+            for(int idx = 0; idx < bitfield.size(); ++idx)
+            {
+                if(bitfield.get_bit((piece_index_t)idx))
+                {
+                    piece_non_seed_upload_count[idx] += 1;
+                }
+            }
+
             ++ num_downloaders_bitfield;
 
             typed_bitfield<piece_index_t> expanded_bitfield = expand_pieces_to_file(p->get_bitfield());
-            int expand_counter = 0;
             for(int idx = 0; idx < expanded_bitfield.size(); ++idx)
             {
                 if(!p->get_bitfield().get_bit((piece_index_t)idx))
                 {
                     piece_need_count[(piece_index_t)idx] += 1;
-                    expand_counter++;
                 }
             }
 		}
@@ -10312,8 +10389,6 @@ namespace {
 			for (auto const& p : span<peer_connection*>(seeds).first(to_disconnect))
 				p->disconnect(errors::upload_upload_connection, operation_t::bittorrent);
 		}
-
-		if (num_downloaders == 0) return;
 
         uint32_t share_mode_target = settings().get_int(settings_pack::share_mode_target);
 
@@ -10387,10 +10462,11 @@ namespace {
         }
 
         if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter + have_filtered_counter > 0){
-            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d, have_filtered %d.",
-                    m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
-                    num_downloaders_bitfield,
-                    pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter, have_filtered_counter);
+            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d, have_filtered %d, lead_peer %d.",
+                      m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
+                      num_downloaders_bitfield,
+                      pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter, have_filtered_counter,
+                      lead_conn_counter);
         } else {
             return;
         }

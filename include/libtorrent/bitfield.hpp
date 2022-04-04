@@ -258,6 +258,38 @@ namespace libtorrent {
 			std::memset(buf(), 0x00, std::size_t(num_words()) * 4);
 		}
 
+        bitfield and_all(const bitfield& other) const {
+            bitfield res(size(), false);
+
+            const int words = num_words();
+            std::uint32_t const* b = buf();
+            std::uint32_t const* b2 = other.buf();
+            std::uint32_t * res_b = res.buf();
+
+            for (int i = 0; i < words; ++i)
+            {
+                res_b[i] = b[i] & b2[i];
+            }
+            res.clear_trailing_bits();
+            return res;
+        }
+
+        bitfield or_all(const bitfield& other) const {
+            bitfield res(size(), false);
+
+            const int words = num_words();
+            std::uint32_t const* b = buf();
+            std::uint32_t const* b2 = other.buf();
+            std::uint32_t * res_b = res.buf();
+
+            for (int i = 0; i < words; ++i)
+            {
+                res_b[i] = b[i] | b2[i];
+            }
+            res.clear_trailing_bits();
+            return res;
+        }
+
 		// make the bitfield empty, of zero size.
 		void clear() noexcept { m_buf.reset(); }
 
@@ -320,7 +352,16 @@ namespace libtorrent {
 		{ this->bitfield::set_bit(static_cast<int>(index)); }
 
 		IndexType end_index() const noexcept { return IndexType(this->size()); }
-	};
+
+        typed_bitfield and_all(const typed_bitfield& other) const {
+            return typed_bitfield(std::move(this->bitfield::and_all(other)));
+        }
+
+        typed_bitfield or_all(const typed_bitfield& other) const {
+            return typed_bitfield(std::move(this->bitfield::or_all(other)));
+        }
+
+    };
 }
 
 #endif // TORRENT_BITFIELD_HPP_INCLUDED
