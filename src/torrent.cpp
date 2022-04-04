@@ -10189,19 +10189,25 @@ namespace {
         if(!(valid_metadata() && has_picker())) return;
 
         time_point const now = aux::time_now();
+        int blocks_in_piece = m_picker->blocks_in_piece(piece_index_t(0));
 
-        if(m_last_share_mode_calc != time_point()) {
+        if(m_last_share_mode_calc__timestamp != time_point()) {
             int timeout_ms = 1000;
             if(!share_mode_client_bitfield_updated) {
                 timeout_ms = 60 * 1000;
             }
 
-            int const tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc));
-            if(tick_interval_ms < timeout_ms) return;
+            int const tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc__timestamp));
+
+            int have_piece_diff_num = m_picker->have().num_pieces - m_last_share_mode_calc__have_piece_num;
+            int have_piece_diff_threshold = int(128LL * 1024 * 1024 / default_block_size / blocks_in_piece); // 128MiB
+
+            if(tick_interval_ms < timeout_ms && have_piece_diff_num < have_piece_diff_threshold) return;
         }
 
-        m_last_share_mode_calc = now;
+        m_last_share_mode_calc__timestamp = now;
         share_mode_client_bitfield_updated = false;
+        m_last_share_mode_calc__have_piece_num = m_picker->have().num_pieces;
 
         //if (is_seed()) return;
 
@@ -10232,11 +10238,11 @@ namespace {
             }
         }
 
-        if(num_seeds >= 10) {
-            debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
+        auto cancel_all_piece = [this]() {
             if(m_picker->want().num_pieces - m_picker->have_want().num_pieces > 0)
             {
                 debug_log("[Locke] cancel all downloading.");
+                int const pieces_in_torrent = m_torrent_file->num_pieces();
                 for(int idx = 0; idx < pieces_in_torrent; idx++)
                 {
                     piece_index_t index = (piece_index_t)idx;
@@ -10244,6 +10250,11 @@ namespace {
                     m_picker->set_piece_priority(index, dont_download);
                 }
             }
+        };
+
+        if(num_seeds >= 10) {
+            debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
+            cancel_all_piece();
             return;
         }
         
@@ -10261,8 +10272,7 @@ namespace {
         // gen lead groups;
         int lead_conn_counter = 0;
         {
-            int blocks_in_piece = m_picker->blocks_in_piece(piece_index_t(0));
-            int gap_block_threshold = 3 * 1024 * (1024 * 1024 / default_block_size); // 3GiB
+            int gap_block_threshold = int(3LL * 1024 * 1024 * 1024 / default_block_size); // 3GiB
             int lead_conn_num_threshold = 10;
             
             int head = 0;
@@ -10302,6 +10312,12 @@ namespace {
             }
         }
 
+        if(num_seeds == 0 && lead_groups.size() > 0 && lead_groups[0].size() >= 10) {
+            debug_log("[Locke] 1st lead_group too large %d, exit", (int)lead_groups[0].size());
+            cancel_all_piece();
+            return;
+        }
+
         int num_downloaders_bitfield = 0;
 
         std::unordered_map<piece_index_t, uint32_t> piece_need_count;
@@ -10309,7 +10325,7 @@ namespace {
 
         lead_conn_counter = 0;
         for (auto & group : lead_groups) {
-            typed_bitfield<piece_index_t> bitfield((*group.begin())->get_bitfield().size());
+            typed_bitfield<piece_index_t> bitfield(pieces_in_torrent);
             for (auto const p : group) {
                 bitfield = bitfield.or_all(p->get_bitfield());
             }

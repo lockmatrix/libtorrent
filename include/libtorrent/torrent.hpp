@@ -448,7 +448,8 @@ namespace libtorrent {
 		void set_share_mode(bool s);
 		bool share_mode() const { return m_share_mode; }
 
-        time_point m_last_share_mode_calc;
+        time_point m_last_share_mode_calc__timestamp;
+        int m_last_share_mode_calc__have_piece_num;
         bool share_mode_client_bitfield_updated;
 #endif
 
