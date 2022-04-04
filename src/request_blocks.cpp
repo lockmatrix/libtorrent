@@ -66,6 +66,8 @@ namespace libtorrent {
 		if (t.upload_mode()) return false;
 		if (c.is_disconnecting()) return false;
 
+        if(!(c.is_seed() || c.upload_only()) && c.hold_download_by_stg) return false;
+
 		// don't request pieces before we have the metadata
 		if (!t.valid_metadata()) return false;
 

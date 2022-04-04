@@ -9645,6 +9645,9 @@ bool is_downloading_state(int const st)
         for (auto const p : m_connections)
         {
             TORRENT_INCREMENT(m_iterating_connections);
+
+            p->hold_download_by_stg = false;
+
             if (p->is_connecting()) continue;
             if (p->is_disconnecting()) continue;
 
@@ -9697,10 +9700,15 @@ bool is_downloading_state(int const st)
 
         // gen lead groups;
         int lead_conn_counter = 0;
+
         {
-            int gap_block_threshold = int(3LL * 1024 * 1024 * 1024 / default_block_size); // 3GiB
+            auto calc_ahead_piece_num = [](peer_connection* head, peer_connection* other) {
+                return head->get_bitfield().count() - head->get_bitfield().and_all(other->get_bitfield()).count();
+            };
+
+            int gap_piece_threshold = int(3LL * 1024 * 1024 * 1024 / default_block_size / blocks_in_piece); // 3GiB
             int lead_conn_num_threshold = 10;
-            
+
             int head = 0;
             while(head < (int)filtered_connections.size() && lead_conn_counter < lead_conn_num_threshold) {
                 peer_connection* head_conn = filtered_connections[head];
@@ -9711,11 +9719,10 @@ bool is_downloading_state(int const st)
                 for(; iter < (int)filtered_connections.size(); ++iter) {
                     peer_connection* conn = filtered_connections[iter];
                     
-                    int gap_pieces = std::abs(head_conn->num_have_pieces() - conn->num_have_pieces());
-                    if(gap_pieces * blocks_in_piece > gap_block_threshold) break;
-                    
-                    int diff_pieces = head_conn->get_bitfield().count() - head_conn->get_bitfield().and_all(conn->get_bitfield()).count();
-                    if(diff_pieces * blocks_in_piece > gap_block_threshold) break;
+                    int gap_pieces = std::max(0, head_conn->num_have_pieces() - conn->num_have_pieces());
+                    if(gap_pieces > gap_piece_threshold) break;
+
+                    if(calc_ahead_piece_num(head_conn, conn) > gap_piece_threshold) break;
                     
                     group.insert(conn);
                     lead_conn_counter++;
@@ -9738,10 +9745,17 @@ bool is_downloading_state(int const st)
             }
         }
 
-        if(num_seeds == 0 && lead_groups.size() > 0 && lead_groups[0].size() >= 10) {
-            debug_log("[Locke] 1st lead_group too large %d, exit", (int)lead_groups[0].size());
-            cancel_all_piece();
-            return;
+        double share_ratio = m_stat.total_payload_upload() * 1.0 / m_stat.total_payload_download();
+        bool hold_lead_group = false;
+        if(share_ratio < 0.3 && m_stat.total_payload_download() > 1024LL * 1024 * 1024) {
+            for(int gid = 0; gid < (int)lead_groups.size(); ++gid) {
+                if(lead_groups[gid].size() >= 5) {
+                    for(auto it = lead_groups[gid].begin(); it != lead_groups[gid].end(); ++it) {
+                        (*it)->hold_download_by_stg = true;
+                    }
+                    hold_lead_group = true;
+                }
+            }
         }
 
         int num_downloaders_bitfield = 0;
@@ -9905,11 +9919,11 @@ bool is_downloading_state(int const st)
         }
 
         if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter + have_filtered_counter > 0){
-            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d, have_filtered %d, lead_peer %d.",
+            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d, have_filtered %d, lead_peer %d, hold_lead_download %d.",
                       m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
                       num_downloaders_bitfield,
                       pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter, have_filtered_counter,
-                      lead_conn_counter);
+                      lead_conn_counter, hold_lead_group);
         } else {
             return;
         }

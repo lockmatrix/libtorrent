@@ -389,6 +389,8 @@ namespace aux {
 #ifndef TORRENT_DISABLE_SHARE_MODE
 		void set_share_mode(bool m);
 		bool share_mode() const { return m_share_mode; }
+
+        bool hold_download_by_stg;
 #endif
 
 		void set_upload_only(bool u);
