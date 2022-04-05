@@ -9902,7 +9902,7 @@ bool is_downloading_state(int const st)
                 download_priority_t new_pri = default_priority;
 
                 int non_seed_upload_count = (int)piece_non_seed_upload_count[(int)idx];
-                if(non_seed_upload_count == 0 && num_seeds == 1)
+                if(non_seed_upload_count == 0 && num_seeds <= 1)
                 {
                     new_pri = top_priority;
                 }
@@ -9919,7 +9919,7 @@ bool is_downloading_state(int const st)
         }
 
         if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter + have_filtered_counter > 0){
-            debug_log("[Locke] done %d, doing %d, num_bitfield %d, inc %d, dec %d, dec_almost %d, have_filtered %d, lead_peer %d, hold_lead_download %d.",
+            debug_log("[Locke] done %d, doing %d, inc %d, dec %d, dec_almost %d, have_filtered %d, num_bitfield %d, lead_peer %d, hold_lead_download %d.",
                       m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
                       num_downloaders_bitfield,
                       pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter, have_filtered_counter,
