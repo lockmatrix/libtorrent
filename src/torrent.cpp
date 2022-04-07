@@ -9745,11 +9745,17 @@ bool is_downloading_state(int const st)
             }
         }
 
-        double share_ratio = m_stat.total_payload_upload() * 1.0 / m_stat.total_payload_download();
+        int64_t total_download = m_stat.total_payload_download();
+        double share_ratio = m_stat.total_payload_upload() * 1.0 / total_download;
         bool hold_lead_group = false;
-        if(share_ratio < 0.3 && m_stat.total_payload_download() > 1024LL * 1024 * 1024) {
+        if((share_ratio < 0.3 && total_download > 1024LL * 1024 * 1024)
+                || (share_ratio < 0.5 && total_download > 2LL * 1024 * 1024 * 1024)
+                || (share_ratio < 1 && total_download > 5LL * 1024 * 1024 * 1024)
+                || (share_ratio < 2 && total_download > 10LL * 1024 * 1024 * 1024)
+                || (share_ratio < 3 && total_download > 20LL * 1024 * 1024 * 1024)) {
             for(int gid = 0; gid < (int)lead_groups.size(); ++gid) {
-                if(lead_groups[gid].size() >= 5) {
+                int group_size = lead_groups[gid].size();
+                if(group_size >= 5 || group_size >= std::max(2, (int)filtered_connections.size() / 5)) {
                     for(auto it = lead_groups[gid].begin(); it != lead_groups[gid].end(); ++it) {
                         (*it)->hold_download_by_stg = true;
                     }
