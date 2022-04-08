@@ -872,6 +872,20 @@ if ("${CMAKE_CXX_STANDARD}" STREQUAL "11")
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_CXX11_ABI)
 endif()
 
+
+
+target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_USE_ASSERTS=1)
+target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_PRODUCTION_ASSERTS=1)
+
+# Dump all variables
+get_target_property(_compile_defs torrent-rasterbar COMPILE_DEFINITIONS)
+list (SORT _compile_defs)
+message(STATUS "All COMPILE_DEFINITIONS:")
+foreach (_compile_def ${_compile_defs})
+	message(STATUS "  ${_compile_def}")
+endforeach()
+
+
 # There is little to none support for using pkg-config with MSVC and most users won't bother with it.
 # However, msys is a linux-like platform on Windows that do support/prefer using pkg-config.
 if (NOT MSVC)

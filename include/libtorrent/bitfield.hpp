@@ -98,6 +98,7 @@ namespace libtorrent {
 		void set_bit(int index) noexcept
 		{
 			TORRENT_ASSERT(index >= 0);
+            TORRENT_ASSERT(size() > 0);
 			TORRENT_ASSERT(index < size());
 			buf()[index / 32] |= aux::host_to_network(0x80000000 >> (index & 31));
 		}
