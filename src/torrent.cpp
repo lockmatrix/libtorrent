@@ -5412,6 +5412,7 @@ bool is_downloading_state(int const st)
             return pieces;
         }
 
+        TORRENT_ASSERT(pieces.size() > 0);
         typed_bitfield<piece_index_t> result_pieces(pieces.size());
 
         file_storage const& fs = m_torrent_file->files();
@@ -5423,6 +5424,15 @@ bool is_downloading_state(int const st)
             piece_index_t start;
             piece_index_t end;
             std::tie(start, end) = file_piece_range_inclusive(fs, i);
+            TORRENT_ASSERT((int)start >= 0);
+            TORRENT_ASSERT((int)start < pieces.size());
+            TORRENT_ASSERT((int)end >= 0);
+
+            if((int)end >= pieces.size()) {
+                //dont know why here
+                end = piece_index_t(pieces.size()-1);
+            }
+
             bool has_this_file = false;
 
             for(piece_index_t idx = start; idx <= end; idx++)
@@ -9638,6 +9648,8 @@ bool is_downloading_state(int const st)
         //if (is_seed()) return;
 
 		int const pieces_in_torrent = m_torrent_file->num_pieces();
+        TORRENT_ASSERT(pieces_in_torrent > 0);
+
 		int num_seeds = 0;
 		int num_peers = 0;
         std::vector<peer_connection*> filtered_connections;
@@ -9771,6 +9783,7 @@ bool is_downloading_state(int const st)
 
         lead_conn_counter = 0;
         for (auto & group : lead_groups) {
+            TORRENT_ASSERT(pieces_in_torrent > 0);
             typed_bitfield<piece_index_t> bitfield(pieces_in_torrent);
             for (auto const p : group) {
                 bitfield = bitfield.or_all(p->get_bitfield());
