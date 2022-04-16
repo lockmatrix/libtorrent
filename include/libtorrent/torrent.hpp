@@ -450,6 +450,7 @@ namespace libtorrent {
 
         time_point m_last_share_mode_calc__timestamp;
         int m_last_share_mode_calc__have_piece_num;
+        bool m_share_mode__stg_too_many_seeds_stopped;
         bool share_mode_client_bitfield_updated;
 #endif
 

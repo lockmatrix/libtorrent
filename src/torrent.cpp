@@ -10202,17 +10202,23 @@ namespace {
         int blocks_in_piece = m_picker->blocks_in_piece(piece_index_t(0));
 
         if(m_last_share_mode_calc__timestamp != time_point()) {
-            int timeout_ms = 1000;
-            if(!share_mode_client_bitfield_updated) {
-                timeout_ms = 60 * 1000;
-            }
-
             int const tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc__timestamp));
 
-            int have_piece_diff_num = m_picker->have().num_pieces - m_last_share_mode_calc__have_piece_num;
-            int have_piece_diff_threshold = int(128LL * 1024 * 1024 / default_block_size / blocks_in_piece); // 128MiB
+            if (m_share_mode__stg_too_many_seeds_stopped) {
+                int timeout_ms = 5 * 60 * 1000;
+                if (tick_interval_ms < timeout_ms) return;
+            } else {
+                int timeout_ms = 2 * 1000;
+                if (!share_mode_client_bitfield_updated) {
+                    timeout_ms = 60 * 1000;
+                }
 
-            if(tick_interval_ms < timeout_ms && have_piece_diff_num < have_piece_diff_threshold) return;
+                int have_piece_diff_num = m_picker->have().num_pieces - m_last_share_mode_calc__have_piece_num;
+                int have_piece_diff_threshold = int(
+                        128LL * 1024 * 1024 / default_block_size / blocks_in_piece); // 128MiB
+
+                if (tick_interval_ms < timeout_ms && have_piece_diff_num < have_piece_diff_threshold) return;
+            }
         }
 
         m_last_share_mode_calc__timestamp = now;
@@ -10269,9 +10275,12 @@ namespace {
 
         if(num_seeds >= 10) {
             debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
+            m_share_mode__stg_too_many_seeds_stopped = true;
             cancel_all_piece();
             return;
         }
+
+        m_share_mode__stg_too_many_seeds_stopped = false;
         
         if(filtered_connections.empty()) return;
 
@@ -10334,19 +10343,30 @@ namespace {
         int64_t total_download = m_stat.total_payload_download();
         double share_ratio = m_stat.total_payload_upload() * 1.0 / total_download;
         bool hold_lead_group = false;
-        if((share_ratio < 0.3 && total_download > 1024LL * 1024 * 1024)
-                || (share_ratio < 0.5 && total_download > 2LL * 1024 * 1024 * 1024)
-                || (share_ratio < 1 && total_download > 5LL * 1024 * 1024 * 1024)
-                || (share_ratio < 2 && total_download > 10LL * 1024 * 1024 * 1024)
-                || (share_ratio < 3 && total_download > 20LL * 1024 * 1024 * 1024)) {
+        bool need_slow_down = (share_ratio < 0.3 && total_download > 1024LL * 1024 * 1024)
+                              || (share_ratio < 0.5 && total_download > 2LL * 1024 * 1024 * 1024)
+                              || (share_ratio < 1 && total_download > 5LL * 1024 * 1024 * 1024)
+                              || (share_ratio < 2 && total_download > 10LL * 1024 * 1024 * 1024)
+                              || (share_ratio < 3 && total_download > 20LL * 1024 * 1024 * 1024);
+        if(need_slow_down) {
             for(int gid = 0; gid < (int)lead_groups.size(); ++gid) {
                 int group_size = lead_groups[gid].size();
-                if(group_size >= 5 || group_size >= std::max(2, (int)filtered_connections.size() / 5)) {
+                double group_progress = (*lead_groups[gid].begin())->num_have_pieces() * 1.0 / pieces_in_torrent;
+                if(num_seeds == 0 && gid == 0 && group_size <= 3) {
+                    // pass
+                } else if(group_progress >= 0.99 && group_size <= 3) {
+                    // pass
+                }
+                else {
                     for(auto it = lead_groups[gid].begin(); it != lead_groups[gid].end(); ++it) {
                         (*it)->hold_download_by_stg = true;
                     }
                     hold_lead_group = true;
                 }
+            }
+
+            for (auto const p : other_conns) {
+                p->hold_download_by_stg = true;
             }
         }
 
