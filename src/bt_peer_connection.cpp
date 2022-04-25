@@ -2643,9 +2643,11 @@ namespace {
 		}
 
 		m_payloads.emplace_back(send_buffer_size() - r.length, r.length);
-		setup_send();
+        int amount_to_send = setup_send();
 
 		stats_counters().inc_stats_counter(counters::num_outgoing_piece);
+
+        t->on_piece_sent_bytes(r.piece, amount_to_send);
 
 		if (t->alerts().should_post<block_uploaded_alert>())
 		{

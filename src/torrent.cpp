@@ -10220,8 +10220,6 @@ namespace {
 
                 if (tick_interval_ms < timeout_ms && have_piece_diff_num < have_piece_diff_threshold) return;
             }
-        } else {
-            m_share_mode__last_seed_total_payload_download_gb = 0;
         }
 
         m_last_share_mode_calc__timestamp = now;
@@ -10371,12 +10369,38 @@ namespace {
             target_share_ratio = 3;
         }
 
+        uint64_t nonseed_download_bytes = 0;
+        uint64_t nonseed_upload_bytes = 0;
+        for(int i = 0; i < pieces_in_torrent; ++i) {
+            if(m_share_mode__piece_stat_init && stat__piece_download_b.at(i) > 0) {
+                double non_seed_download_ratio = stat__non_seed_piece_download_b.at(i) / stat__piece_download_b.at(i);
+                nonseed_upload_bytes += uint64_t( non_seed_download_ratio * stat__piece_upload_b.at(i));
+                nonseed_download_bytes += stat__non_seed_piece_download_b.at(i);
+            }
+        }
+
+
         bool hold_lead_group = false;
+        const char *hold_lead_group_reason = "none";
 
         if(tick_interval_ms > 0
             && (seed_total_payload_download_gb - last_seed_total_payload_download_gb) / tick_interval_ms / 1000 >= 5.0 / 1024
             ) { // seed_download speed >= 5.0MiB/s
             hold_lead_group = true;
+            hold_lead_group_reason = "seed_too_fast";
+
+            for (auto const p : filtered_connections) {
+                p->hold_download_by_stg = true;
+            }
+        } else if(nonseed_download_bytes >= 1LL * 1024 * 1024 * 1024
+            && nonseed_upload_bytes * 1.0 / nonseed_download_bytes <= target_share_ratio
+            ) {
+            hold_lead_group = true;
+            hold_lead_group_reason = "non_seed_share_ratio";
+
+            for (auto const p : filtered_connections) {
+                p->hold_download_by_stg = true;
+            }
         } else if(share_ratio < target_share_ratio) {
             for(int gid = 0; gid < (int)lead_groups.size(); ++gid) {
                 int group_size = lead_groups[gid].size();
@@ -10391,6 +10415,7 @@ namespace {
                         (*it)->hold_download_by_stg = true;
                     }
                     hold_lead_group = true;
+                    hold_lead_group_reason = "total_share_ratio";
                 }
             }
 
@@ -10561,11 +10586,11 @@ namespace {
         }
 
         if(pick_inc_counter + pick_dec_counter + pick_dec_but_almost_done_counter + have_filtered_counter > 0){
-            debug_log("[Locke] done %d, doing %d, inc %d, dec %d, dec_almost %d, have_filtered %d, num_bitfield %d, lead_peer %d, hold_lead_download %d.",
+            debug_log("[Locke] done %d, doing %d, inc %d, dec %d, dec_almost %d, have_filtered %d, num_bitfield %d, lead_peer %d, hold_lead %s.",
                       m_picker->have().num_pieces, m_picker->want().num_pieces - m_picker->have_want().num_pieces,
                       num_downloaders_bitfield,
                       pick_inc_counter, pick_dec_counter, pick_dec_but_almost_done_counter, have_filtered_counter,
-                      lead_conn_counter, hold_lead_group);
+                      lead_conn_counter, hold_lead_group_reason);
         } else {
             return;
         }

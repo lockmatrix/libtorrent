@@ -448,12 +448,50 @@ namespace libtorrent {
 		void set_share_mode(bool s);
 		bool share_mode() const { return m_share_mode; }
 
-        bool share_mode_client_bitfield_updated;
+        bool share_mode_client_bitfield_updated = false;
 
-        time_point m_last_share_mode_calc__timestamp;
-        int m_last_share_mode_calc__have_piece_num;
-        bool m_share_mode__stg_too_many_seeds_stopped;
-        double m_share_mode__last_seed_total_payload_download_gb;
+        time_point m_last_share_mode_calc__timestamp = time_point();
+        int m_last_share_mode_calc__have_piece_num = 0;
+        bool m_share_mode__stg_too_many_seeds_stopped = false;
+        double m_share_mode__last_seed_total_payload_download_gb = 0;
+
+        bool m_share_mode__piece_stat_init = false;
+        std::vector<std::uint64_t> stat__piece_upload_b;
+        std::vector<std::uint64_t> stat__non_seed_piece_download_b;
+        std::vector<std::uint64_t> stat__piece_download_b;
+
+        bool init_piece_stat() {
+            if(!valid_metadata()) return false;
+
+            int const pieces_in_torrent = m_torrent_file->num_pieces();
+            TORRENT_ASSERT(pieces_in_torrent > 0);
+
+            stat__piece_upload_b.resize(pieces_in_torrent);
+            stat__non_seed_piece_download_b.resize(pieces_in_torrent);
+            stat__piece_download_b.resize(pieces_in_torrent);
+
+            m_share_mode__piece_stat_init = true;
+            return true;
+        }
+
+        void on_piece_sent_bytes(piece_index_t piece, int bytes) {
+            TORRENT_ASSERT(is_single_thread());
+            if(!m_share_mode__piece_stat_init) {
+                if(!init_piece_stat()) return;
+            }
+            stat__piece_upload_b.at(int(piece)) += bytes;
+        }
+
+        void on_piece_received_bytes(piece_index_t piece, int bytes, bool from_seed) {
+            TORRENT_ASSERT(is_single_thread());
+            if(!m_share_mode__piece_stat_init) {
+                if(!init_piece_stat()) return;
+            }
+            stat__piece_download_b.at(int(piece)) += bytes;
+            if(!from_seed) {
+                stat__non_seed_piece_download_b.at(int(piece)) += bytes;
+            }
+        }
 #endif
 
 		// TODO: make graceful pause also finish all sending blocks
