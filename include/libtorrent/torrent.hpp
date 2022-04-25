@@ -448,10 +448,12 @@ namespace libtorrent {
 		void set_share_mode(bool s);
 		bool share_mode() const { return m_share_mode; }
 
+        bool share_mode_client_bitfield_updated;
+
         time_point m_last_share_mode_calc__timestamp;
         int m_last_share_mode_calc__have_piece_num;
         bool m_share_mode__stg_too_many_seeds_stopped;
-        bool share_mode_client_bitfield_updated;
+        double m_share_mode__last_seed_total_payload_download_gb;
 #endif
 
 		// TODO: make graceful pause also finish all sending blocks
