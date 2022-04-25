@@ -102,7 +102,7 @@ namespace libtorrent {
 
 	struct TORRENT_EXTRA_EXPORT peer_list : single_threaded
 	{
-		explicit peer_list(torrent_peer_allocator_interface& alloc);
+		explicit peer_list(torrent_peer_allocator_interface& alloc, bool share_mode);
 		~peer_list();
 
 		void clear();
@@ -263,6 +263,9 @@ namespace libtorrent {
 		// if a peer has failed this many times or more, we don't consider
 		// it a connect candidate anymore.
 		int m_max_failcount = 3;
+
+        // torrent is share_mode
+        bool m_share_mode;
 	};
 
 }
