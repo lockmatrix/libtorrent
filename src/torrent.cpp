@@ -9766,15 +9766,29 @@ bool is_downloading_state(int const st)
             }
         }
 
-        int64_t total_download = m_stat.total_payload_download();
-        double share_ratio = m_stat.total_payload_upload() * 1.0 / total_download;
+        int64_t total_download_b = m_stat.total_payload_download();
+        double share_ratio = m_stat.total_payload_upload() * 1.0 / total_download_b;
+
+        double total_download_gb = total_download_b * 1.0 / 1024 / 1024 / 1024;
+        double target_share_ratio = 3;
+        if(total_download_gb < 0.1) {
+            target_share_ratio = 0.0;
+        } else if(total_download_gb < 1) {
+            target_share_ratio = 0.3 * (total_download_gb - 0.1) / (1 - 0.1);
+        } else if(total_download_gb < 2) {
+            target_share_ratio = 0.3 + (0.5 - 0.3) * (total_download_gb - 1) / (2 - 1);
+        } else if(total_download_gb < 3) {
+            target_share_ratio = 0.5 + (1.0 - 0.5) * (total_download_gb - 2) / (3 - 2);
+        } else if(total_download_gb < 5) {
+            target_share_ratio = 1.0 + (2.0 - 1.0) * (total_download_gb - 3) / (5 - 3);
+        } else if(total_download_gb < 10) {
+            target_share_ratio = 2.0 + (3.0 - 2.0) * (total_download_gb - 5) / (10 - 5);
+        } else {
+            target_share_ratio = 3;
+        }
+
         bool hold_lead_group = false;
-        bool need_slow_down = (share_ratio < 0.3 && total_download > 1024LL * 1024 * 1024)
-                              || (share_ratio < 0.5 && total_download > 2LL * 1024 * 1024 * 1024)
-                              || (share_ratio < 1 && total_download > 5LL * 1024 * 1024 * 1024)
-                              || (share_ratio < 2 && total_download > 10LL * 1024 * 1024 * 1024)
-                              || (share_ratio < 3 && total_download > 20LL * 1024 * 1024 * 1024);
-        if(need_slow_down) {
+        if(share_ratio < target_share_ratio) {
             for(int gid = 0; gid < (int)lead_groups.size(); ++gid) {
                 int group_size = lead_groups[gid].size();
                 double group_progress = (*lead_groups[gid].begin())->num_have_pieces() * 1.0 / pieces_in_torrent;
