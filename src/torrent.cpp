@@ -9627,8 +9627,9 @@ bool is_downloading_state(int const st)
         time_point const now = aux::time_now();
         int blocks_in_piece = m_picker->blocks_in_piece(piece_index_t(0));
 
+        int tick_interval_ms = 0;
         if(m_last_share_mode_calc__timestamp != time_point()) {
-            int const tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc__timestamp));
+            tick_interval_ms = aux::numeric_cast<int>(total_milliseconds(now - m_last_share_mode_calc__timestamp));
 
             if (m_share_mode__stg_too_many_seeds_stopped) {
                 int timeout_ms = 5 * 60 * 1000;
@@ -9645,6 +9646,8 @@ bool is_downloading_state(int const st)
 
                 if (tick_interval_ms < timeout_ms && have_piece_diff_num < have_piece_diff_threshold) return;
             }
+        } else {
+            m_share_mode__last_seed_total_payload_download_gb = 0;
         }
 
         m_last_share_mode_calc__timestamp = now;
@@ -9658,6 +9661,7 @@ bool is_downloading_state(int const st)
 
 		int num_seeds = 0;
 		int num_peers = 0;
+        std::int64_t seed_total_payload_download_b = 0;
         std::vector<peer_connection*> filtered_connections;
 
         for (auto const p : m_connections)
@@ -9674,6 +9678,7 @@ bool is_downloading_state(int const st)
             if (p->is_seed())
             {
                 ++num_seeds;
+                seed_total_payload_download_b += p->statistics().total_payload_download();
                 continue;
             }
 
@@ -9684,6 +9689,11 @@ bool is_downloading_state(int const st)
                 filtered_connections.push_back(p);
             }
         }
+
+        double seed_total_payload_download_gb = seed_total_payload_download_b * 1.0 / 1024 / 1024 / 1024;
+        double last_seed_total_payload_download_gb = m_share_mode__last_seed_total_payload_download_gb;
+        m_share_mode__last_seed_total_payload_download_gb = seed_total_payload_download_gb;
+
 
         auto cancel_all_piece = [this]() {
             if(m_picker->want().num_pieces - m_picker->have_want().num_pieces > 0)
@@ -9788,7 +9798,12 @@ bool is_downloading_state(int const st)
         }
 
         bool hold_lead_group = false;
-        if(share_ratio < target_share_ratio) {
+
+        if(tick_interval_ms > 0
+            && (seed_total_payload_download_gb - last_seed_total_payload_download_gb) / tick_interval_ms / 1000 >= 5.0 / 1024
+            ) { // seed_download speed >= 5.0MiB/s
+            hold_lead_group = true;
+        } else if(share_ratio < target_share_ratio) {
             for(int gid = 0; gid < (int)lead_groups.size(); ++gid) {
                 int group_size = lead_groups[gid].size();
                 double group_progress = (*lead_groups[gid].begin())->num_have_pieces() * 1.0 / pieces_in_torrent;
