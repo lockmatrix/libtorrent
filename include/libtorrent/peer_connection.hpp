@@ -390,7 +390,7 @@ namespace aux {
 		void set_share_mode(bool m);
 		bool share_mode() const { return m_share_mode; }
 
-        bool hold_download_by_stg;
+        bool hold_download_by_stg = false;
 #endif
 
 		void set_upload_only(bool u);
@@ -630,7 +630,7 @@ namespace aux {
 		virtual piece_block_progress downloading_piece_progress() const;
 
 		void send_buffer(span<char const> buf);
-		void setup_send();
+		int setup_send();
 
 		template <typename Holder>
 		void append_send_buffer(Holder buffer, int size)

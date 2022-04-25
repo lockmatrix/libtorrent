@@ -2968,6 +2968,8 @@ namespace libtorrent {
 			counters::queued_write_bytes, p.length);
 		m_outstanding_writing_bytes += p.length;
 
+        t->on_piece_received_bytes(p.piece, p.length, is_seed());
+
 		std::int64_t const max_queue_size = m_settings.get_int(
 			settings_pack::max_queued_disk_bytes);
 		if (write_queue_size > max_queue_size
@@ -5596,11 +5598,11 @@ namespace libtorrent {
 		return ret;
 	}
 
-	void peer_connection::setup_send()
+	int peer_connection::setup_send()
 	{
 		TORRENT_ASSERT(is_single_thread());
 
-		if (m_disconnecting || m_send_buffer.empty()) return;
+		if (m_disconnecting || m_send_buffer.empty()) return 0;
 
 		// we may want to request more quota at this point
 		request_bandwidth(upload_channel);
@@ -5613,7 +5615,7 @@ namespace libtorrent {
 			peer_log(peer_log_alert::outgoing, "CORKED_WRITE", "bytes: %d"
 				, m_send_buffer.size());
 #endif
-			return;
+			return 0;
 		}
 
 		if (m_send_barrier == 0)
@@ -5640,7 +5642,7 @@ namespace libtorrent {
 			&& !m_send_buffer.empty()
 			&& !m_connecting)
 		{
-			return;
+			return 0;
 		}
 
 		int const quota_left = m_quota[upload_channel];
@@ -5712,7 +5714,7 @@ namespace libtorrent {
 				}
 			}
 #endif
-			return;
+			return 0;
 		}
 
 		int const amount_to_send = std::min({
@@ -5741,6 +5743,8 @@ namespace libtorrent {
 
 		m_channel_state[upload_channel] |= peer_info::bw_network;
 		m_last_sent = aux::time_now();
+
+        return amount_to_send;
 	}
 
 	void peer_connection::on_disk()
