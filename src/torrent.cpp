@@ -7953,7 +7953,7 @@ bool is_downloading_state(int const st)
 
 	bool torrent::is_finished() const
 	{
-		if (is_seed()) return true;
+		if (!share_mode() && is_seed()) return true;
 		return valid_metadata() && has_picker() && m_picker->is_finished();
 	}
 
