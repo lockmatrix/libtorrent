@@ -10281,8 +10281,9 @@ namespace {
             }
         };
 
-        if(num_seeds >= 10) {
-            debug_log("[Locke] has %d seeds, stop downloading.", num_peers);
+        unsigned int max_seed_num = filtered_connections.size() / 5;
+        if(num_seeds >= max_seed_num) {
+            debug_log("[Locke] has %d seeds, stop downloading.", num_seeds);
             m_share_mode__stg_too_many_seeds_stopped = true;
             cancel_all_piece();
             return;
@@ -10526,7 +10527,7 @@ namespace {
             if(demand_count <= (int)share_mode_target) continue;
             if(demand_count < (std::max(1, num_seeds) + non_seed_upload_count * 3) * 3) continue;
 
-            if(num_seeds + non_seed_upload_count >= 10) continue;
+            if(num_seeds + non_seed_upload_count >= max_seed_num) continue;
 
             double score = 0;
             score += demand_count * 1;
