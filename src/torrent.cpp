@@ -9780,20 +9780,22 @@ bool is_downloading_state(int const st)
 
         double total_download_gb = total_download_b * 1.0 / 1024 / 1024 / 1024;
         double target_share_ratio = 3;
-        if(total_download_gb < 0.1) {
+        if(total_download_gb < 0.3) {
             target_share_ratio = 0.0;
         } else if(total_download_gb < 1) {
-            target_share_ratio = 0.3 * (total_download_gb - 0.1) / (1 - 0.1);
+            target_share_ratio = 1.0 * (total_download_gb - 0.3) / (1 - 0.3);
         } else if(total_download_gb < 2) {
-            target_share_ratio = 0.3 + (0.5 - 0.3) * (total_download_gb - 1) / (2 - 1);
+            target_share_ratio = 1.0 + (2.0 - 1.0) * (total_download_gb - 1) / (2 - 1);
         } else if(total_download_gb < 3) {
-            target_share_ratio = 0.5 + (1.0 - 0.5) * (total_download_gb - 2) / (3 - 2);
+            target_share_ratio = 2.0 + (3.0 - 2.0) * (total_download_gb - 2) / (3 - 2);
         } else if(total_download_gb < 5) {
-            target_share_ratio = 1.0 + (2.0 - 1.0) * (total_download_gb - 3) / (5 - 3);
+            target_share_ratio = 3.0 + (4.0 - 3.0) * (total_download_gb - 3) / (5 - 3);
         } else if(total_download_gb < 10) {
-            target_share_ratio = 2.0 + (3.0 - 2.0) * (total_download_gb - 5) / (10 - 5);
+            target_share_ratio = 4.0 + (5.0 - 4.0) * (total_download_gb - 5) / (10 - 5);
+        } else if(total_download_gb < 20) {
+            target_share_ratio = 5.0 + (7.0 - 5.0) * (total_download_gb - 10) / (20 - 10);
         } else {
-            target_share_ratio = 3;
+            target_share_ratio = 7;
         }
 
         uint64_t nonseed_download_bytes = 0;
