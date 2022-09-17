@@ -9708,7 +9708,7 @@ bool is_downloading_state(int const st)
         };
 
         unsigned int max_seed_num = filtered_connections.size() / 5;
-        if(num_seeds >= max_seed_num) {
+        if(num_seeds >= max_seed_num && max_seed_num > 0) {
             debug_log("[Locke] has %d seeds, stop downloading.", num_seeds);
             m_share_mode__stg_too_many_seeds_stopped = true;
             cancel_all_piece();
